@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3.3
 # coding: utf-8
 # Very basic SPDY Client using OpenSSL-NPN support (Python 3.3+)
 
@@ -16,11 +16,11 @@ def str2hexa(string):
             In [5]: str2hexa('abc\n')
             Out[5]: '0x61 0x62 0x63 0x0A'
 
-        TODO: Doesn't work in python 3, remedy this
+        TODO: Doesn't work in python 2, remedy this
     """
     hexa=''
     for s in string:
-        hexa += '0x%02x' % ord(s) + ' '
+        hexa += '0x%02x' % s + ' '
     return hexa.rstrip()
 
 def parse_args():
@@ -52,6 +52,7 @@ if __name__ == '__main__':
     sock.connect((host, port))
     connection = ctx.wrap_socket(sock)
 
+    # Just ping the server
     spdy_ctx = spdy.Context(spdy.CLIENT)
     ping_frame = spdy.frames.Ping(spdy_ctx.next_ping_id)
     spdy_ctx.put_frame(ping_frame)
@@ -62,4 +63,4 @@ if __name__ == '__main__':
         print('new frame:')
         answer = connection.read()
         for i in range(0, len(answer), 4):
-            print(answer[i:i+4])
+            print(str2hexa(answer[i:i+4]))
