@@ -2,3 +2,6 @@ __pycache__
 *.pyc
 /cython/zlib_stream.c
 /build
+/.project
+/.pydevproject
+.settings

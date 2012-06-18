@@ -1,8 +1,6 @@
 import socket
 import ssl
 import spdy.frames
-import spdy
-from pprint import pprint
 
 server = socket.socket()
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -10,15 +8,21 @@ server.bind(('', 9599))
 server.listen(5)
 
 ctx = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+
+# Forcing DES-CBC3-SHA for Wireshark+Spdyshark to be able to decrypt this
+# http://code.google.com/p/spdyshark/
+# http://japhr.blogspot.com/2011/05/ssl-that-can-be-sniffed-by-wireshark.html
+ctx.set_ciphers('DES-CBC3-SHA')
+
 ctx.load_cert_chain('server.crt', 'server.key')
 ctx.set_npn_protocols(['spdy/2'])
 
 def handle_frame(conn, f):
 	print("CLIENT SAYS,", f)
-		
+
 	if isinstance(f, spdy.frames.Ping):
 		ping = spdy.frames.Ping(f.uniq_id)
-		conn.put_frame(ping)	
+		conn.put_frame(ping)
 		print(str(ping) + ", SAYS SERVER")
 
 	elif isinstance(f, spdy.frames.SynStream):
@@ -35,7 +39,7 @@ try:
 			sock, sockaddr = server.accept()
 			ss = ctx.wrap_socket(sock, server_side=True)
 
-			conn = spdy.Context(spdy.SERVER) 
+			conn = spdy.Context(spdy.SERVER)
 
 			while True:
 				d = ss.recv(1024)
@@ -47,7 +51,7 @@ try:
 					handle_frame(conn, f)
 
 				outgoing = conn.outgoing()
-				if outgoing: 
+				if outgoing:
 					ss.sendall(outgoing)
 
 		except Exception as exc:
