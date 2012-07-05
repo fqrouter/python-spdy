@@ -17,5 +17,5 @@ setup(
 	cmdclass={'build_ext': build_ext},
 	ext_modules=[zlib_wrapper],
 	packages=['spdy'],
-	package_dir={'spdy': 'python-spdy'}
+	package_dir={'spdy': 'spdy'}
 )

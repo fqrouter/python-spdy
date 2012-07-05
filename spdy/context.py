@@ -1,3 +1,4 @@
+# coding: utf-8
 from spdy.frames import *
 from spdy._zlib_stream import Inflater, Deflater
 from bitarray import bitarray
@@ -15,6 +16,7 @@ def _bitmask(length, split, mask=0):
 
 _first_bit = _bitmask(8, 1, 1)
 _last_15_bits = _bitmask(16, 1, 0)
+_last_31_bits = _bitmask(32, 1, 0)
 
 class Context(object):
 	def __init__(self, side, version=2):
@@ -72,11 +74,11 @@ class Context(object):
 
 	def _parse_header_chunk(self, compressed_data, version):
 		chunk = self.inflater.decompress(compressed_data)
-		length_size = 2 if version == 2 else 4	
+		length_size = 2 if version == 2 else 4
 		headers = {}
 
 		#first two bytes: number of pairs
-		num_values = int.from_bytes(chunk[0:length_size], 'big')	
+		num_values = int.from_bytes(chunk[0:length_size], 'big')
 
 		#after that...
 		cursor = length_size
@@ -88,7 +90,7 @@ class Context(object):
 			#next name_length bytes: name
 			name = chunk[cursor:cursor+name_length].decode('UTF-8')
 			cursor += name_length
-			
+
 			#two/four bytes: length of value
 			value_length = int.from_bytes(chunk[cursor:cursor+length_size], 'big')
 			cursor += length_size
@@ -96,7 +98,7 @@ class Context(object):
 			#next value_length bytes: value
 			value = chunk[cursor:cursor+value_length].decode('UTF-8')
 			cursor += value_length
-			
+
 			if name_length == 0 or value_length == 0:
 				raise SpdyProtocolError("zero-length name or value in n/v block")
 			if name in headers:
@@ -104,6 +106,24 @@ class Context(object):
 			headers[name] = value
 
 		return headers
+
+	def _parse_settings_id_values(self, number_of_entries, data):
+		id_value_pairs = {}
+
+		cursor = 0
+		for _ in range(number_of_entries):
+			# 3B = ID
+			id = int.from_bytes(data[cursor:cursor+3], 'little')
+			cursor += 3
+			# 1B = ID_Flag
+			id_flag = int.from_bytes(data[cursor:cursor+1], 'big')
+			cursor += 1
+			# 4B = Value
+			value = int.from_bytes(data[cursor:cursor+4], 'big')
+			cursor += 4
+			id_value_pairs[id] = (id_flag, value)
+
+		return id_value_pairs
 
 	def _parse_frame(self, chunk):
 		if len(chunk) < 8:
@@ -154,9 +174,12 @@ class Context(object):
 				else:
 					value = bits[:num_bits]
 					bits = bits[num_bits:]
-					
+
 				if key == 'headers': #headers are compressed
 					args[key] = self._parse_header_chunk(value.tobytes(), self.version)
+				elif key == 'id_value_pairs':
+					args[key] = self._parse_settings_id_values(args['number_of_entries'], \
+															value.tobytes())
 				else:
 					#we have to pad values on the left, because bitarray will assume
 					#that you want it padded from the right
@@ -166,7 +189,7 @@ class Context(object):
 						zeroes.setall(False)
 						value = zeroes + value
 					args[key] = int.from_bytes(value.tobytes(), 'big')
-				
+
 				if num_bits == -1:
 					break
 
@@ -174,8 +197,8 @@ class Context(object):
 
 		else: #data frame
 			#first four bytes, except the first bit: stream_id
-			stream_id = int.from_bytes(_ignore_first_bit(chunk[0:4]), 'big')
-			
+			stream_id = int.from_bytes(chunk[0:4], 'big') & _last_31_bits
+
 			#fifth byte: flags
 			flags = chunk[4]
 
@@ -212,10 +235,22 @@ class Context(object):
 
 			#next value_length bytes: value
 			chunk.extend(value)
-			
+
 		return self.deflater.compress(bytes(chunk))
-		
-	
+
+	def _encode_settings_id_values(self, id_values_dict):
+		chunk = bytearray()
+
+		for id, (id_flag, value) in id_values_dict.items():
+			# 3B = ID
+			chunk.extend(id.to_bytes(3, 'little'))
+			# 1B = ID_Flag
+			chunk.extend(id_flag.to_bytes(1, 'big'))
+			# 4B = Value
+			chunk.extend(value.to_bytes(4, 'big'))
+
+		return bytes(chunk)
+
 	def _encode_frame(self, frame):
 		out = bytearray()
 
@@ -235,7 +270,7 @@ class Context(object):
 			bits = bitarray()
 			for key, num_bits in frame.definition(self.version):
 
-				if not key:
+				if not key: # is False
 					zeroes = bitarray(num_bits)
 					zeroes.setall(False)
 					bits += zeroes
@@ -245,6 +280,9 @@ class Context(object):
 				if key == 'headers':
 					chunk = bitarray()
 					chunk.frombytes(self._encode_header_chunk(value))
+				elif key == 'id_value_pairs':
+					chunk = bitarray()
+					chunk.frombytes(self._encode_settings_id_values(value))
 				else:
 					chunk = bitarray(bin(value)[2:])
 					zeroes = bitarray(num_bits - len(chunk))
@@ -255,26 +293,26 @@ class Context(object):
 				if num_bits == -1:
 					break
 
-			data = bits.tobytes() 
+			data = bits.tobytes()
 
 			#sixth, seventh and eighth bytes: length
 			out.extend(len(data).to_bytes(3, 'big'))
 
 			# the rest is data
 			out.extend(data)
-		
+
 		else: #data frame
-			
+
 			#first four bytes: stream_id
 			out.extend(frame.stream_id.to_bytes(4, 'big'))
-			
+
 			#fifth: flags
 			out.append(frame.flags)
 
 			#sixth, seventh and eighth bytes: length
 			data_length = len(frame.data)
 			out.extend(data_length.to_bytes(3, 'big'))
-		
+
 			#rest is data
 			out.extend(frame.data)
 

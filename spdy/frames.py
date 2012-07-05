@@ -1,6 +1,7 @@
 DEFAULT_VERSION = 2
 VERSIONS = [2]
 
+# Frame IDs
 SYN_STREAM = 1
 SYN_REPLY = 2
 RST_STREAM = 3
@@ -11,6 +12,7 @@ GOAWAY = 7
 HEADERS = 8
 WINDOW_UPDATE = 9
 
+# RST_STREAM Status Codes
 PROTOCOL_ERROR = 1
 INVALID_STREAM = 2
 REFUSED_STREAM = 3
@@ -19,6 +21,24 @@ CANCEL = 5
 INTERNAL_ERROR = 6
 FLOW_CONTROL_ERROR = 7
 
+# SETTINGS FLags
+FLAG_SETTINGS_CLEAR_PREV = 0x01
+
+# SETTINGS ID Values
+UPLOAD_BANDWIDTH = 1
+DOWNLOAD_BANDWIDTH = 2
+ROUND_TRIP_TIME = 3
+MAX_CONCURRENT_STREAMS = 4
+CURRENT_CWND = 5
+DOWNLOAD_RETRANS_RATE = 6
+INITIAL_WINDOW_SIZE = 7
+
+# SETTINGS ID Flags
+ID_FLAG_PERSIST_NONE = 0
+ID_FLAG_PERSIST_VALUE = 1
+ID_FLAG_PERSISTED = 2
+
+# Dicts for Debug printing
 ERROR_CODES = {
 	1: 'PROTOCOL_ERROR',
 	2: 'INVALID_STREAM',
@@ -27,6 +47,16 @@ ERROR_CODES = {
 	5: 'CANCEL',
 	6: 'INTERNAL_ERROR',
 	7: 'FLOW_CONTROL_ERROR'
+}
+
+SETTINGS_ID_VALUES = {
+	1: 'UPLOAD_BANDWIDTH',
+	2: 'DOWNLOAD_BANDWIDTH',
+	3: 'ROUND_TRIP_TIME',
+	4: 'MAX_CONCURRENT_STREAMS',
+	5: 'CURRENT_CWND',
+	6: 'DOWNLOAD_RETRANS_RATE',
+	7: 'INITIAL_WINDOW_SIZE'
 }
 
 FLAG_FIN = 0x01
@@ -109,7 +139,7 @@ class SynStream(ControlFrame):
 	|               ...                |
 	+----------------------------------+
 	"""
-		
+
 	@staticmethod
 	def definition(version=DEFAULT_VERSION):
 		if version == 2:
@@ -127,7 +157,8 @@ class SynStream(ControlFrame):
 				('headers', -1)
 			]
 
-	def __init__(self, stream_id, headers, priority=0, assoc_stream_id=0, slot=0, flags=FLAG_FIN, version=DEFAULT_VERSION):
+	def __init__(self, stream_id, headers, priority=0, assoc_stream_id=0, \
+				 slot=0, flags=FLAG_FIN, version=DEFAULT_VERSION):
 		super(SynStream, self).__init__(SYN_STREAM, flags, version)
 		self.stream_id = stream_id
 		self.assoc_stream_id = assoc_stream_id
@@ -156,7 +187,7 @@ class SynReply(ControlFrame):
 	|               ...                |
 	+----------------------------------+
 	"""
-	
+
 	_definition = [
 		(False, 1), ('stream_id', 31),
 		(False, 16),
@@ -187,7 +218,7 @@ class Headers(ControlFrame):
 	|               ...                |
 	+----------------------------------+
 	"""
-	
+
 	_definition = [
 		(False, 1), ('stream_id', 31),
 		(False, 16),
@@ -214,7 +245,7 @@ class RstStream(ControlFrame):
 	|         Status code              |
 	+----------------------------------+
 	"""
-	
+
 	_definition = [
 		(False, 1), ('stream_id', 31),
 		('error_code', 32)
@@ -228,6 +259,39 @@ class RstStream(ControlFrame):
 	def __repr__(self):
 		return 'RST_STREAM error={0}'.format(ERROR_CODES[self.error_code])
 
+class Settings(ControlFrame):
+	"""
+	+----------------------------------+
+	|1|      version   |      4        |
+	+----------------------------------+
+	| Flags (8) |     Length (24 bits) |
+	+----------------------------------+
+	|        Number of entries         |
+	+----------------------------------+
+	|         ID/Value Pairs           |
+	|              ...                 |
+	+----------------------------------+
+	"""
+
+	_definition = [
+		('number_of_entries', 32),
+		('id_value_pairs', -1)
+	]
+
+	def __init__(self, number_of_entries, id_value_pairs, flags=0, version=DEFAULT_VERSION):
+		super(Settings, self).__init__(SETTINGS, flags, version)
+
+		self.clear_persisted = (flags & FLAG_SETTINGS_CLEAR_PREV == \
+										FLAG_SETTINGS_CLEAR_PREV)
+		self.number_of_entries = number_of_entries
+		self.id_value_pairs = id_value_pairs
+
+	def __repr__(self):
+		out = ''
+		for id, (id_flag, value) in self.id_value_pairs.items():
+			out += '%s=%i, ' % (SETTINGS_ID_VALUES[id], value)
+		return 'SETTINGS=%s' % out[:-2]
+
 class Ping(ControlFrame):
 	"""
 	+----------------------------------+
@@ -238,7 +302,7 @@ class Ping(ControlFrame):
 	|                ID                |
 	+----------------------------------+
 	"""
-	
+
 	_definition = [
 		('uniq_id', 32)
 	]
@@ -249,7 +313,7 @@ class Ping(ControlFrame):
 
 	def __repr__(self):
 		return 'PING id={0}'.format(self.uniq_id)
-	
+
 class Goaway(ControlFrame):
 	"""
 	+----------------------------------+
@@ -260,17 +324,17 @@ class Goaway(ControlFrame):
 	|X|  Last-good-stream-ID (31 bits) |
 	+----------------------------------+
 	"""
-	
+
 	_definition = [
 		('last_stream_id', 32)
 	]
-	
+
 	def __init__(self, last_stream_id, flags=0, version=DEFAULT_VERSION):
 		super(Goaway, self).__init__(GOAWAY, 0, version)
 		self.last_stream_id = last_stream_id
 
 	def __repr__(self):
-		return 'GET THE FUCK OUT'
+		return 'GOAWAY'
 
 class WindowUpdate(ControlFrame):
 	"""
@@ -284,7 +348,7 @@ class WindowUpdate(ControlFrame):
 	|X|  Delta-Window-Size (31-bits)   |
 	+----------------------------------+
 	"""
-	
+
 	_definition = [
 		(False, 1), ('stream_id', 31),
 		(False, 1), ('delta_window_size', 31)
@@ -302,7 +366,7 @@ FRAME_TYPES = {
 	SYN_STREAM: SynStream,
 	SYN_REPLY: SynReply,
 	RST_STREAM: RstStream,
-#	4: Settings, #TODO
+	SETTINGS: Settings,
 #	5: Noop,
 	PING: Ping,
 	GOAWAY: Goaway,

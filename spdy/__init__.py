@@ -1,6 +1,6 @@
 # coding: utf-8
-# Python v3.2+
-#from spdy.context import *
-
-# Python v2.7+
-from spdy.context_v2 import *
+import sys
+if sys.version_info[0] >= 3:
+    from spdy.context import *
+else:
+    from spdy.context_v2 import *
