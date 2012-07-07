@@ -87,15 +87,20 @@ if __name__ == '__main__':
     get_page(spdy_ctx, host)
 
     out = spdy_ctx.outgoing()
+#    print str2hexa(str(out))
     connection.write(out)
     file_out = open('/tmp/spdyout.txt', 'wb')
-    while True:
+    goaway = False
+    while not goaway:
         answer = connection.read() # Blocking
+#        print '<<\n', str2hexa(answer)
         spdy_ctx.incoming(answer)
-        frame = get_frame(spdy_ctx) # TODO: Fix python2 broken?
+        frame = get_frame(spdy_ctx)
         while frame:
             print ('<<', frame)
             if hasattr(frame, 'data'):
                 file_out.write(frame.data)
                 file_out.flush()
             frame = get_frame(spdy_ctx)
+            if isinstance(frame, spdy.Goaway):
+                goaway = True

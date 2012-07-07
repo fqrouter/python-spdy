@@ -1,6 +1,7 @@
 # coding: utf-8
 from spdy.frames import *
-from spdy._zlib_stream import Inflater, Deflater
+#from spdy._zlib_stream import Inflater, Deflater
+from c_zlib import compress, decompress, HEADER_ZLIB_DICT_2
 from bitarray import bitarray
 import struct
 
@@ -17,6 +18,7 @@ def _bitmask(length, split, mask=0):
 
 _first_bit = _bitmask(8, 1, 1)
 _last_15_bits = _bitmask(16, 1, 0)
+_last_31_bits = _bitmask(32, 1, 0)
 
 class Context(object):
 	def __init__(self, side, version=2):
@@ -27,8 +29,8 @@ class Context(object):
 			raise NotImplementedError()
 		self.version = version
 
-		self.deflater = Deflater(version)
-		self.inflater = Inflater(version)
+#		self.deflater = Deflater(version)
+#		self.inflater = Inflater(version)
 		self.frame_queue = []
 		self.input_buffer = bytearray()
 
@@ -55,7 +57,8 @@ class Context(object):
 		self.input_buffer.extend(chunk)
 
 	def get_frame(self):
-		frame, bytes_parsed = self._parse_frame(bytes(self.input_buffer))
+		#frame, bytes_parsed = self._parse_frame(bytes(self.input_buffer))
+		frame, bytes_parsed = self._parse_frame(self.input_buffer)
 		if bytes_parsed:
 			self.input_buffer = self.input_buffer[bytes_parsed:]
 		return frame
@@ -73,7 +76,10 @@ class Context(object):
 		return out
 
 	def _parse_header_chunk(self, compressed_data, version):
-		chunk = self.inflater.decompress(compressed_data)
+		#chunk = self.inflater.decompress(compressed_data)
+		chunk = decompress(compressed_data, dictionary=HEADER_ZLIB_DICT_2)
+		#print 'decompressed_headers', repr(chunk)
+		
 		length_size = 2 if version == 2 else 4
 		length_fmt = '>H' if length_size == 2 else '>L'
 		headers = {}
@@ -111,6 +117,27 @@ class Context(object):
 
 		return headers
 
+	def _parse_settings_id_values(self, number_of_entries, data):
+		id_value_pairs = {}
+
+		cursor = 0
+		for _ in range(number_of_entries):
+			# 3B = ID
+			#id = int.from_bytes(data[cursor:cursor+3], 'little')
+			id = struct.unpack('<L', data[cursor:cursor+3] + '\x00')[0]
+			cursor += 3
+			# 1B = ID_Flag
+			#id_flag = int.from_bytes(data[cursor:cursor+1], 'big')
+			id_flag = struct.unpack('>B', data[cursor:cursor+1])[0]
+			cursor += 1
+			# 4B = Value
+			#value = int.from_bytes(data[cursor:cursor+4], 'big')
+			value = struct.unpack('>L', data[cursor:cursor+4])[0]
+			cursor += 4
+			id_value_pairs[id] = (id_flag, value)
+
+		return id_value_pairs
+
 	def _parse_frame(self, chunk):
 		if len(chunk) < 8:
 			return (None, 0)
@@ -121,13 +148,13 @@ class Context(object):
 		if control_frame:
 			#second byte (and rest of first, after the first bit): spdy version
 			#spdy_version = int.from_bytes(chunk[0:2], 'big') & _last_15_bits
-			spdy_version = struct.unpack('>H', chunk[0:2])[0] & _last_15_bits
+			spdy_version = struct.unpack('>H', str(chunk[0:2]))[0] & _last_15_bits
 			if spdy_version != self.version:
 				raise SpdyProtocolError("incorrect SPDY version")
 
 			#third and fourth byte: frame type
 			#frame_type = int.from_bytes(chunk[2:4], 'big')
-			frame_type = struct.unpack('>H', chunk[2:4])[0]
+			frame_type = struct.unpack('>H', str(chunk[2:4]))[0]
 			if not frame_type in FRAME_TYPES:
 				raise SpdyProtocolError("invalid frame type: {0}".format(frame_type))
 
@@ -136,13 +163,13 @@ class Context(object):
 
 			#sixth, seventh and eighth bytes: length
 			#length = int.from_bytes(chunk[5:8], 'big')
-			length = struct.unpack('>L', '\x00' + chunk[5:8])[1:][0]
+			length = struct.unpack('>L', '\x00' + str(chunk[5:8]))[0]
 			frame_length = length + 8
 			if len(chunk) < frame_length:
 				return (None, 0)
 
 			#the rest is data
-			data = chunk[8:frame_length]
+			data = str(chunk[8:frame_length])
 
 			bits = bitarray()
 			bits.frombytes(data)
@@ -166,6 +193,9 @@ class Context(object):
 
 				if key == 'headers': #headers are compressed
 					args[key] = self._parse_header_chunk(value.tobytes(), self.version)
+				elif key == 'id_value_pairs':
+					args[key] = self._parse_settings_id_values(args['number_of_entries'], \
+															value.tobytes())
 				else:
 					#we have to pad values on the left, because bitarray will assume
 					#that you want it padded from the right
@@ -185,20 +215,20 @@ class Context(object):
 
 		else: #data frame
 			#first four bytes, except the first bit: stream_id
-			#stream_id = int.from_bytes(_ignore_first_bit(chunk[0:4]), 'big')
-			stream_id = struct.unpack('>L', _ignore_first_bit(chunk[0:4]))[0]
+			#stream_id = int.from_bytes(_last_31_bits(chunk[0:4]), 'big')
+			stream_id = struct.unpack('>L', str(chunk[0:4]))[0] & _last_31_bits
 
 			#fifth byte: flags
 			flags = chunk[4]
 
 			#sixth, seventh and eight bytes: length
 			#length = int.from_bytes(chunk[5:8], 'big')
-			length = struct.unpack('>L', '\x00' + chunk[5:8])[1:][0]
+			length = struct.unpack('>L', '\x00' + str(chunk[5:8]))[0]
 			frame_length = 8 + length
 			if len(chunk) < frame_length:
 				return (0, None)
 
-			data = chunk[8:frame_length]
+			data = str(chunk[8:frame_length])
 			frame = DataFrame(stream_id, data)
 
 		return (frame, frame_length)
@@ -211,9 +241,12 @@ class Context(object):
 		chunk.extend(struct.pack('>H', len(headers)))
 
 		#after that...
-		for name, value in headers.items():
-			name = bytes(name, 'UTF-8')
-			value = bytes(value, 'UTF-8')
+		for name, value in sorted(headers.items()):
+			#name = bytes(name, 'UTF-8')
+			name = name.encode('UTF-8')
+
+			#value = bytes(value, 'UTF-8')
+			value = value.encode('UTF-8')
 
 			#two bytes: length of name
 			#chunk.extend(len(name).to_bytes(2, 'big'))
@@ -229,8 +262,29 @@ class Context(object):
 			#next value_length bytes: value
 			chunk.extend(value)
 
-		return self.deflater.compress(bytes(chunk))
+		#return self.deflater.compress(bytes(chunk))
+#		print 'headers', sorted(headers.items())
+#		print 'decoded_headers', repr(chunk)
+		compressed_headers = compress(str(chunk), level=6, dictionary=HEADER_ZLIB_DICT_2)
+#		print 'compressed_headers', repr(compressed_headers)
+		return compressed_headers[:-1] # Don't know why -1
 
+	def _encode_settings_id_values(self, id_values_dict):
+		chunk = bytearray()
+
+		for id, (id_flag, value) in id_values_dict.items():
+			# 3B = ID
+			#chunk.extend(id.to_bytes(3, 'little'))
+			chunk.extend(struct.pack('<L', id)[:-1])
+			# 1B = ID_Flag
+			#chunk.extend(id_flag.to_bytes(1, 'big'))
+			chunk.extend(struct.pack('>H', id_flag)[1:])
+			# 4B = Value
+			#chunk.extend(value.to_bytes(4, 'big'))
+			chunk.extend(struct.pack('>L', value))
+
+		#return bytes(chunk)
+		return chunk
 
 	def _encode_frame(self, frame):
 		out = bytearray()
@@ -253,7 +307,7 @@ class Context(object):
 			bits = bitarray()
 			for key, num_bits in frame.definition(self.version):
 
-				if not key:
+				if not key: # is False
 					zeroes = bitarray(num_bits)
 					zeroes.setall(False)
 					bits += zeroes
@@ -272,7 +326,6 @@ class Context(object):
 				bits += chunk
 				if num_bits == -1:
 					break
-
 			data = bits.tobytes()
 
 			#sixth, seventh and eighth bytes: length
