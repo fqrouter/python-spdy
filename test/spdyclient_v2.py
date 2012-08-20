@@ -1,7 +1,10 @@
 #!/usr/bin/env python2
 # coding: utf-8
-# Very basic SPDY Client using tlslite - Python 2.7+
+# Very basic TLS Client using tlslite (0.4.1 library, which supports NPN).
+# Python 2.7+, does NOT work in Python 3.x.
 # https://groups.google.com/d/msg/spdy-dev/gY66X7Ew0aA/HbN_lmUGT5kJ
+# Author: Marcelo Fernández
+# marcelo.fidel.fernandez@gmail.com / mail@marcelofernandez.info
 
 import sys
 import socket

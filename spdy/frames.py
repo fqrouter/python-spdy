@@ -33,10 +33,6 @@ CURRENT_CWND = 5
 DOWNLOAD_RETRANS_RATE = 6
 INITIAL_WINDOW_SIZE = 7
 
-# SETTINGS ID Flags
-ID_FLAG_PERSIST_NONE = 0
-ID_FLAG_PERSIST_VALUE = 1
-ID_FLAG_PERSISTED = 2
 
 # Dicts for Debug printing
 ERROR_CODES = {
@@ -57,6 +53,12 @@ SETTINGS_ID_VALUES = {
 	5: 'CURRENT_CWND',
 	6: 'DOWNLOAD_RETRANS_RATE',
 	7: 'INITIAL_WINDOW_SIZE'
+}
+
+SETTINGS_ID_FLAGS = {
+    0: 'FLAG_PERSIST_NONE',
+    1: 'FLAG_PERSIST_VALUE',
+    2: 'FLAG_PERSISTED',
 }
 
 FLAG_FIN = 0x01
@@ -289,7 +291,8 @@ class Settings(ControlFrame):
 	def __repr__(self):
 		out = ''
 		for id, (id_flag, value) in self.id_value_pairs.items():
-			out += '%s=%i, ' % (SETTINGS_ID_VALUES[id], value)
+			out += '%s=%i,%s' % (SETTINGS_ID_VALUES[id], value,
+								 SETTINGS_ID_FLAGS[id_flag])
 		return 'SETTINGS=%s' % out[:-2]
 
 class Ping(ControlFrame):
