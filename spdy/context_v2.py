@@ -1,6 +1,5 @@
 # coding: utf-8
 from spdy.frames import *
-#from spdy._zlib_stream import Inflater, Deflater
 from c_zlib import compress, decompress, HEADER_ZLIB_DICT_2
 from bitarray import bitarray
 import struct
@@ -28,9 +27,6 @@ class Context(object):
 		if not version in VERSIONS:
 			raise NotImplementedError()
 		self.version = version
-
-#		self.deflater = Deflater(version)
-#		self.inflater = Inflater(version)
 		self.frame_queue = []
 		self.input_buffer = bytearray()
 
@@ -76,9 +72,7 @@ class Context(object):
 		return out
 
 	def _parse_header_chunk(self, compressed_data, version):
-		#chunk = self.inflater.decompress(compressed_data)
 		chunk = decompress(compressed_data, dictionary=HEADER_ZLIB_DICT_2)
-		#print 'decompressed_headers', repr(chunk)
 		
 		length_size = 2 if version == 2 else 4
 		length_fmt = '>H' if length_size == 2 else '>L'
@@ -262,11 +256,7 @@ class Context(object):
 			#next value_length bytes: value
 			chunk.extend(value)
 
-		#return self.deflater.compress(bytes(chunk))
-#		print 'headers', sorted(headers.items())
-#		print 'decoded_headers', repr(chunk)
 		compressed_headers = compress(str(chunk), level=6, dictionary=HEADER_ZLIB_DICT_2)
-#		print 'compressed_headers', repr(compressed_headers)
 		return compressed_headers[:-1] # Don't know why -1
 
 	def _encode_settings_id_values(self, id_values_dict):

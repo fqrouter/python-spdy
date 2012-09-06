@@ -36,7 +36,7 @@ installation
 
 requires:
 
-	pip install cython bitarray
+	pip install bitarray
 
 then:
 	

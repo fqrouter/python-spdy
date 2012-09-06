@@ -1,21 +1,13 @@
-from distutils.core import setup, Extension
-from Cython.Distutils import build_ext
-
-zlib_wrapper = Extension(
-	'spdy._zlib_stream', ['cython/zlib_stream.pyx'],
-	libraries=['z']
-)
-
+from distutils.core import setup
+# Forked from python-spdy package from Colin Marc - colinmarc@gmail.com
+# http://github.com/colinmarc/python-spdy
 setup(
 	name='spdy',
 	version='0.2',
-	description='a parser/muxer/demuxer for spdy frames',
-	author='Colin Marc',
-	author_email='colinmarc@gmail.com',
-	url='http//www.github.com/colinmarc/python-spdy',
-	requires=['Cython (>=0.15.1)', 'bitarray (>=0.7.0)'],
-	cmdclass={'build_ext': build_ext},
-	ext_modules=[zlib_wrapper],
+	description='A parser/muxer/demuxer for spdy frames',
+	author='Marcelo Fernandez',
+	author_email='marcelo.fidel.fernandez@gmail.com',
+	url='http//www.github.com/marcelofernandez/python-spdy',
 	packages=['spdy'],
 	package_dir={'spdy': 'spdy'}
 )

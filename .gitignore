@@ -1,9 +1,6 @@
 __pycache__
 *.pyc
-/cython/zlib_stream.c
 /build
 /.project
 /.pydevproject
 .settings
-/spdy/_zlib_stream.cpython-33m.so
-/spdy/_zlib_stream.so
