@@ -84,10 +84,11 @@ if __name__ == '__main__':
     connection = ctx.wrap_socket(sock)
     spdy_ctx = spdy.Context(spdy.CLIENT)
 
-    ping_test(spdy_ctx)
+    #ping_test(spdy_ctx)
     get_page(spdy_ctx, host)
-
+    
     out = spdy_ctx.outgoing()
+    print (str2hexa(out))
     connection.write(out)
     file_out = open('/tmp/spdyout.txt', 'wb')
     while True:
