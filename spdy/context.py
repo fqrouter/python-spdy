@@ -15,9 +15,13 @@ def _bitmask(length, split, mask=0):
     b = str(mask)*split + str(invert)*(length-split)
     return int(b, 2)
 
+_first_bit = _bitmask(8, 1, 1)
+_last_15_bits = _bitmask(16, 1, 0)
+_last_31_bits = _bitmask(32, 1, 0)
+
 def get_struct_params(str_length, byte_order):
     """ Guess pack integer format, only for unsigned 1 to 4-Byte integer byte-strings """
-    pad_before, pad_after = '', ''
+    pad_before, pad_after = 0, 0
     endianess = '>' if byte_order == 'big' else '<'
     if str_length == 1:
         int_format = 'B'
@@ -27,9 +31,9 @@ def get_struct_params(str_length, byte_order):
         int_format = 'L'
         if str_length == 3:
             if endianess == '>':
-                pad_before = '\x00'
+                pad_before = 1
             else:
-                pad_after = '\x00'
+                pad_after = 1
     else:
         raise ValueError('String length exceeds 4 Bytes long')
     return (endianess + int_format, pad_before, pad_after)
@@ -41,11 +45,20 @@ def get_int_from_stream(stream, byte_order):
         length_fmt, pad_before, pad_after = get_struct_params(len(stream), byte_order)
         if type(stream) == bytearray:
             stream = str(stream)
-        return struct.unpack(length_fmt, pad_before + stream + pad_after)[0]
-       
-_first_bit = _bitmask(8, 1, 1)
-_last_15_bits = _bitmask(16, 1, 0)
-_last_31_bits = _bitmask(32, 1, 0)
+        return struct.unpack(length_fmt, '\x00' * pad_before + stream + '\x00' * pad_after)[0]
+
+def get_stream_from_int(int_value, length, byte_order):
+    if hasattr(int, 'to_bytes'):
+        return int_value.to_bytes(length, byte_order)
+    else:
+        length_fmt, pad_before, pad_after = get_struct_params(length, byte_order)
+        packed_int = struct.pack(length_fmt, int_value)
+        if pad_before > 0:
+            packed_int = packed_int[pad_before:]
+        if pad_after > 0:
+            packed_int = packed_int[:-pad_after]
+        return packed_int
+
 
 class Context(object):
     def __init__(self, side, version=2):
@@ -244,7 +257,7 @@ class Context(object):
         chunk = bytearray()
 
         #first two bytes: number of pairs
-        chunk.extend(len(headers).to_bytes(2, 'big'))
+        chunk.extend(get_stream_from_int(len(headers), 2, 'big'))
 
         #after that...
         for name, value in headers.items():
@@ -252,13 +265,13 @@ class Context(object):
             value = bytes(value, 'UTF-8')
 
             #two bytes: length of name
-            chunk.extend(len(name).to_bytes(2, 'big'))
+            chunk.extend(get_stream_from_int(len(name), 2, 'big'))
 
             #next name_length bytes: name
             chunk.extend(name)
 
             #two bytes: length of value
-            chunk.extend(len(value).to_bytes(2, 'big'))
+            chunk.extend(get_stream_from_int(len(value), 2, 'big'))
 
             #next value_length bytes: value
             chunk.extend(value)
@@ -271,11 +284,11 @@ class Context(object):
 
         for id, (id_flag, value) in id_values_dict.items():
             # 3B = ID
-            chunk.extend(id.to_bytes(3, 'little'))
+            chunk.extend(get_stream_from_int(id, 3, 'little'))
             # 1B = ID_Flag
-            chunk.extend(id_flag.to_bytes(1, 'big'))
+            chunk.extend(get_stream_from_int(id_flag, 1, 'big'))
             # 4B = Value
-            chunk.extend(value.to_bytes(4, 'big'))
+            chunk.extend(get_stream_from_int(value, 4, 'big'))
 
         return bytes(chunk)
 
@@ -284,13 +297,13 @@ class Context(object):
 
         if frame.is_control:
             #first two bytes: version
-            out.extend(frame.version.to_bytes(2, 'big'))
+            out.extend(get_stream_from_int(frame.version, 2, 'big'))
 
             #set the first bit to control
             out[0] = out[0] | _first_bit
 
             #third and fourth: frame type
-            out.extend(frame.frame_type.to_bytes(2, 'big'))
+            out.extend(get_stream_from_int(frame.frame_type, 2, 'big'))
 
             #fifth: flags
             out.append(frame.flags)
@@ -320,26 +333,24 @@ class Context(object):
                 bits += chunk
                 if num_bits == -1:
                     break
-
             data = bits.tobytes()
 
             #sixth, seventh and eighth bytes: length
-            out.extend(len(data).to_bytes(3, 'big'))
-
+            out.extend(get_stream_from_int(len(data), 3, 'big'))
             # the rest is data
             out.extend(data)
 
         else: #data frame
 
             #first four bytes: stream_id
-            out.extend(frame.stream_id.to_bytes(4, 'big'))
+            out.extend(get_stream_from_int(frame.stream_id, 4, 'big'))
 
             #fifth: flags
             out.append(frame.flags)
 
             #sixth, seventh and eighth bytes: length
             data_length = len(frame.data)
-            out.extend(data_length.to_bytes(3, 'big'))
+            out.extend(get_stream_from_int(data_length, 3, 'big'))
 
             #rest is data
             out.extend(frame.data)
