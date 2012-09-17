@@ -1,7 +1,11 @@
-from spdy.connection import *
+#!/usr/bin/env python
+# coding: utf-8
 
-server = Connection(SERVER)
-client = Connection(CLIENT)
+from spdy.context import Context, CLIENT, SERVER
+from spdy.frames import SynStream, SynReply
+
+server = Context(SERVER)
+client = Context(CLIENT)
 
 frame = SynStream(stream_id=client.next_stream_id, headers={'dood': 'balls', 'stuff': 'otherstuff'})
 client.put_frame(frame)
