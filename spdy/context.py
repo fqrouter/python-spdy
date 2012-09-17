@@ -94,7 +94,7 @@ class Context(object):
         self.input_buffer.extend(chunk)
 
     def get_frame(self):
-        frame, bytes_parsed = self._parse_frame(bytes(self.input_buffer))
+        frame, bytes_parsed = self._parse_frame(self.input_buffer)
         if bytes_parsed:
             self.input_buffer = self.input_buffer[bytes_parsed:]
         return frame
@@ -196,7 +196,7 @@ class Context(object):
             data = chunk[8:frame_length]
 
             bits = bitarray()
-            bits.frombytes(data)
+            bits.frombytes(bytes(data))
             frame_cls = FRAME_TYPES[frame_type]
 
             args = {
@@ -261,8 +261,8 @@ class Context(object):
 
         #after that...
         for name, value in headers.items():
-            name = bytes(name, 'UTF-8')
-            value = bytes(value, 'UTF-8')
+            name = bytes(name.encode('utf-8'))
+            value = bytes(value.encode('utf-8'))
 
             #two bytes: length of name
             chunk.extend(get_stream_from_int(len(name), 2, 'big'))
@@ -275,7 +275,7 @@ class Context(object):
 
             #next value_length bytes: value
             chunk.extend(value)
-        
+
         compressed_headers = compress(bytes(chunk), level=6, dictionary=HEADER_ZLIB_DICT_2)
         return compressed_headers[:-1] # Don't know why -1
 

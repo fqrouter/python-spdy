@@ -8,8 +8,8 @@
 
 import sys
 import socket
-import spdy
-from spdy.frames import SynStream, Ping
+from spdy.context import Context, CLIENT, SpdyProtocolError
+from spdy.frames import SynStream, Ping, Goaway, FLAG_FIN
 from tlslite.api import TLSConnection
 
 DEFAULT_HOST = 'www.google.com'
@@ -58,7 +58,7 @@ def ping_test(spdy_ctx):
 
 def get_page(spdy_ctx, host, url='/'):
     syn_frame = SynStream(stream_id=spdy_ctx.next_stream_id, \
-                      flags=spdy.FLAG_FIN, \
+                      flags=FLAG_FIN, \
                       headers={'method' : 'GET',
                                'url'   : url,
                                'version': 'HTTP/1.1',
@@ -71,7 +71,7 @@ def get_page(spdy_ctx, host, url='/'):
 def get_frame(spdy_ctx):
     try:
         return spdy_ctx.get_frame()
-    except spdy.SpdyProtocolError as e:
+    except SpdyProtocolError as e:
         print ('error parsing frame: %s' % str(e))
 
 if __name__ == '__main__':
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     connection = TLSConnection(sock)
     connection.handshakeClientCert(nextProtos=["spdy/2"])
 
-    spdy_ctx = spdy.Context(spdy.CLIENT)
+    spdy_ctx = Context(CLIENT)
 
     ping_test(spdy_ctx)
     get_page(spdy_ctx, host)
@@ -105,5 +105,5 @@ if __name__ == '__main__':
                 file_out.write(frame.data)
                 file_out.flush()
             frame = get_frame(spdy_ctx)
-            if isinstance(frame, spdy.Goaway):
+            if isinstance(frame, Goaway):
                 goaway = True

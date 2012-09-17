@@ -5,8 +5,8 @@
 import sys
 import socket
 import ssl
-import spdy
-from spdy.frames import SynStream, Ping
+from spdy.context import Context, CLIENT, SpdyProtocolError
+from spdy.frames import SynStream, Ping, FLAG_FIN
 
 DEFAULT_HOST = 'www.google.com'
 DEFAULT_PORT = 443
@@ -54,7 +54,7 @@ def ping_test(spdy_ctx):
 
 def get_page(spdy_ctx, host, url='/'):
     syn_frame = SynStream(stream_id=spdy_ctx.next_stream_id, \
-                      flags=spdy.FLAG_FIN, \
+                      flags=FLAG_FIN, \
                       headers={'method' : 'GET',
                                'url'   : url,
                                'version': 'HTTP/1.1',
@@ -67,7 +67,7 @@ def get_page(spdy_ctx, host, url='/'):
 def get_frame(spdy_ctx):
     try:
         return spdy_ctx.get_frame()
-    except spdy.SpdyProtocolError as e:
+    except SpdyProtocolError as e:
         print ('error parsing frame: %s' % str(e))
 
 if __name__ == '__main__':
@@ -82,7 +82,7 @@ if __name__ == '__main__':
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host, port))
     connection = ctx.wrap_socket(sock)
-    spdy_ctx = spdy.Context(spdy.CLIENT)
+    spdy_ctx = Context(CLIENT)
 
     #ping_test(spdy_ctx)
     get_page(spdy_ctx, host)
