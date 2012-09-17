@@ -1,5 +1,7 @@
+#!/usr/bin/env python3.3
 import socket
 import ssl
+from spdy.context import Context, SERVER 
 import spdy.frames
 
 server = socket.socket()
@@ -36,10 +38,11 @@ def handle_frame(conn, f):
 try:
     while True:
         try:
+            print ('Running one-client SPDY Server...')
             sock, sockaddr = server.accept()
             ss = ctx.wrap_socket(sock, server_side=True)
 
-            conn = spdy.Context(spdy.SERVER)
+            conn = Context(SERVER)
 
             while True:
                 d = ss.recv(1024)

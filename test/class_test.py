@@ -1,8 +1,9 @@
 # coding: utf-8
 """ Dummy SPDY Classes testing and examples, no network involved """
 
-import spdy
-from spdy.frames import *
+from spdy.context import Context, CLIENT 
+from spdy.frames import SynStream, Settings, UPLOAD_BANDWIDTH, \
+                        DOWNLOAD_BANDWIDTH, PERSIST_NONE
 
 def str2hexa(string):
     """ Helper function to print hexadecimal bytestrings
@@ -22,16 +23,16 @@ def print_encoded_frame(frame):
         print(str2hexa(frame[i:i+4]))
 
 if __name__ == '__main__':
-    ctx = spdy.Context(spdy.context.CLIENT)
+    ctx = Context(CLIENT)
     frame = SynStream(1, {})
     print ('SYN Frame')
     print_encoded_frame(ctx._encode_frame(frame))
 
     print ('SETTINGS Frame')
-    frame = Settings(2, {UPLOAD_BANDWIDTH: (ID_FLAG_PERSIST_NONE, 60),
-                         DOWNLOAD_BANDWIDTH : (ID_FLAG_PERSIST_NONE, 128)})
+    frame = Settings(2, {UPLOAD_BANDWIDTH: (PERSIST_NONE, 60),
+                         DOWNLOAD_BANDWIDTH : (PERSIST_NONE, 128)})
     byte_frame = ctx._encode_frame(frame)
     print_encoded_frame(byte_frame)
 
-    frame2 = ctx._parse_frame(bytes(byte_frame))[0]
+    frame2 = ctx._parse_frame(byte_frame)[0]
     print(frame2)

@@ -1,3 +1,4 @@
+# coding: utf-8
 DEFAULT_VERSION = 2
 VERSIONS = [2]
 
@@ -22,7 +23,7 @@ INTERNAL_ERROR = 6
 FLOW_CONTROL_ERROR = 7
 
 # SETTINGS FLags
-FLAG_SETTINGS_CLEAR_PREV = 0x01
+CLEAR_SETTINGS = 0x01
 
 # SETTINGS ID Values
 UPLOAD_BANDWIDTH = 1
@@ -33,6 +34,10 @@ CURRENT_CWND = 5
 DOWNLOAD_RETRANS_RATE = 6
 INITIAL_WINDOW_SIZE = 7
 
+# SETTINGS ID Flags
+PERSIST_NONE = 0
+PERSIST_VALUE = 1
+PERSISTED = 2
 
 # Dicts for Debug printing
 ERROR_CODES = {
@@ -283,8 +288,7 @@ class Settings(ControlFrame):
     def __init__(self, number_of_entries, id_value_pairs, flags=0, version=DEFAULT_VERSION):
         super(Settings, self).__init__(SETTINGS, flags, version)
 
-        self.clear_persisted = (flags & FLAG_SETTINGS_CLEAR_PREV == \
-                                        FLAG_SETTINGS_CLEAR_PREV)
+        self.clear_persisted = (flags & CLEAR_SETTINGS == CLEAR_SETTINGS)
         self.number_of_entries = number_of_entries
         self.id_value_pairs = id_value_pairs
 
