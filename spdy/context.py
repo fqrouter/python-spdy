@@ -1,8 +1,8 @@
 # coding: utf-8
-from spdy.frames import *
-from spdy.c_zlib import compress, decompress, HEADER_ZLIB_DICT_2
+from sys import version_info
 from bitarray import bitarray
-import struct
+from spdy.c_zlib import compress, decompress, HEADER_ZLIB_DICT_2
+from spdy.frames import Frame, DataFrame, VERSIONS, FRAME_TYPES
 
 SERVER = 'SERVER'
 CLIENT = 'CLIENT'
@@ -19,38 +19,35 @@ _first_bit = _bitmask(8, 1, 1)
 _last_15_bits = _bitmask(16, 1, 0)
 _last_31_bits = _bitmask(32, 1, 0)
 
-def get_struct_params(str_length, byte_order):
-    """ Guess pack integer format, only for unsigned 1 to 4-Byte integer byte-strings """
-    pad_before, pad_after = 0, 0
-    endianess = '>' if byte_order == 'big' else '<'
-    if str_length == 1:
-        int_format = 'B'
-    elif str_length == 2:
-        int_format = 'H'
-    elif str_length <= 4:
-        int_format = 'L'
-        if str_length == 3:
-            if endianess == '>':
-                pad_before = 1
-            else:
-                pad_after = 1
-    else:
-        raise ValueError('String length exceeds 4 Bytes long')
-    return (endianess + int_format, pad_before, pad_after)
-    
-def get_int_from_stream(stream, byte_order):
-    if hasattr(int, 'from_bytes'):
-        return int.from_bytes(stream, byte_order)
-    else:
-        length_fmt, pad_before, pad_after = get_struct_params(len(stream), byte_order)
-        if type(stream) == bytearray:
-            stream = str(stream)
-        return struct.unpack(length_fmt, '\x00' * pad_before + stream + '\x00' * pad_after)[0]
+if version_info[0:2] < (3,2):
+    import struct
+    def get_struct_params(str_length, byte_order):
+        """ Guess pack integer format, for unsigned 1 to 4-Byte int byte-strings """
+        pad_before, pad_after = 0, 0
+        endianess = '>' if byte_order == 'big' else '<'
+        if str_length == 1:
+            int_format = 'B'
+        elif str_length == 2:
+            int_format = 'H'
+        elif str_length <= 4:
+            int_format = 'L'
+            if str_length == 3:
+                if endianess == '>':
+                    pad_before = 1
+                else:
+                    pad_after = 1
+        else:
+            raise ValueError('String length exceeds 4 Bytes long')
+        return (endianess + int_format, pad_before, pad_after)
 
-def get_stream_from_int(int_value, length, byte_order):
-    if hasattr(int, 'to_bytes'):
-        return int_value.to_bytes(length, byte_order)
-    else:
+    def get_int_from_stream(stream, byte_order):
+        length_fmt, pad_before, pad_after = get_struct_params(len(stream), 
+                                                              byte_order)
+        stream = str(stream)
+        return struct.unpack(length_fmt, '\x00' * pad_before + stream + 
+                                         '\x00' * pad_after)[0]
+    
+    def get_stream_from_int(int_value, length, byte_order):
         length_fmt, pad_before, pad_after = get_struct_params(length, byte_order)
         packed_int = struct.pack(length_fmt, int_value)
         if pad_before > 0:
@@ -58,6 +55,11 @@ def get_stream_from_int(int_value, length, byte_order):
         if pad_after > 0:
             packed_int = packed_int[:-pad_after]
         return packed_int
+else:
+    def get_int_from_stream(stream, byte_order):
+        return int.from_bytes(stream, byte_order)
+    def get_stream_from_int(int_value, length, byte_order):
+        return int_value.to_bytes(length, byte_order)
 
 
 class Context(object):

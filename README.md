@@ -46,6 +46,7 @@ Note: To use this library for I/O networking, the SPDY protocol usually needs
       below an SSL layer with NPN (Next-Protocol Negotiation) support. 
       Python 3.3+ does support ssl.set_npn_protocols() call, only for 
       environments running OpenSSL 1.0.1+. 
+      
       If you are not running Python 3.3+ over OpenSSL 1.0.1+, you can use 
       the tlslite module [1], from Python 2.6/2.7 instead. 
       However, the latest 0.4.1 version doesn't have a patch which includes
@@ -53,7 +54,9 @@ Note: To use this library for I/O networking, the SPDY protocol usually needs
       Client NPN here [2]. 
       I've posted a pull request to the author, so I hope this issue will be 
       resolved soon in future tlslite release.
+      
       Take a look at the /test directory for client and server examples.
 
 [1] http://pypi.python.org/pypi/tlslite
+
 [2] https://github.com/marcelofernandez/tlslite
