@@ -8,9 +8,11 @@
 
 import sys
 import socket
+from tlslite.api import TLSConnection
+from io import BytesIO
+import gzip
 from spdy.context import Context, CLIENT, SpdyProtocolError
 from spdy.frames import SynStream, Ping, Goaway, FLAG_FIN
-from tlslite.api import TLSConnection
 
 DEFAULT_HOST = 'www.google.com'
 DEFAULT_PORT = 443
@@ -65,7 +67,7 @@ def get_page(spdy_ctx, host, url='/'):
                                'host'   : host,
                                'scheme' : 'https',
                                })
-    print('>>', syn_frame)
+    print('>>', syn_frame, 'Headers:', syn_frame.headers)
     spdy_ctx.put_frame(syn_frame)
 
 def get_frame(spdy_ctx):
@@ -90,20 +92,31 @@ if __name__ == '__main__':
     get_page(spdy_ctx, host)
 
     out = spdy_ctx.outgoing()
-#    print str2hexa(str(out))
+    #print str2hexa(str(out))
     connection.write(out)
     file_out = open('/tmp/spdyout.txt', 'wb')
     goaway = False
+    content_type_id = {}
     while not goaway:
         answer = connection.read() # Blocking
-#        print '<<\n', str2hexa(answer)
+        #print '<<\n', str2hexa(answer)
         spdy_ctx.incoming(answer)
         frame = get_frame(spdy_ctx)
         while frame:
-            print ('<<', frame)
-            if hasattr(frame, 'data'):
-                file_out.write(frame.data)
+            if hasattr(frame, 'headers'):
+                print ('<<', frame, 'Headers:', frame.headers)
+                content_type_id[frame.stream_id] = frame.headers.get('content-encoding')                      
+            elif hasattr(frame, 'data'):
+                data = frame.data
+                # Handle gzipped data
+                if content_type_id[frame.stream_id] == 'gzip':
+                    iodata = BytesIO(bytes(data))
+                    data = gzip.GzipFile(fileobj=iodata).read() 
+                print ('<<', frame, 'Data:', data[:512].decode('utf-8', 'ignore'))
+                file_out.write(data)
                 file_out.flush()
+            else:
+                print ('<<', frame)
             frame = get_frame(spdy_ctx)
             if isinstance(frame, Goaway):
                 goaway = True
