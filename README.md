@@ -1,7 +1,7 @@
 python-spdy
 ==========
 
-python-spdy is a simple spdy parser/(de)muxer for Python 2.6 or newer. Python 3 is supported.
+python-spdy is a simple SPDY v2 parser/(de)muxer for Python 2.6 or newer. Python 3 is supported. SPDY v3 support is on the way.
 
 Usage
 -----
@@ -55,7 +55,7 @@ Note: To use this library for I/O networking, the SPDY protocol usually needs
       I've posted a pull request to the author, so I hope this issue will be 
       resolved soon in future tlslite release.
       
-      Take a look at the /test directory for client and server examples.
+      Take a look at the /examples directory for client and server SPDY examples.
 
 [1] http://pypi.python.org/pypi/tlslite
 
