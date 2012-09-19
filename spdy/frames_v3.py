@@ -1,19 +1,22 @@
 # coding: utf-8
-""" Framing definition for SPDY protocol v2 only, relatively stable."""
-
-DEFAULT_VERSION = 2
-VERSIONS = [2]
+""" Framing definition for SPDY protocol v2/v3, incomplete & unstable ATM. """
+DEFAULT_VERSION = 3
+VERSIONS = [2, 3]
 
 # Frame IDs
 SYN_STREAM = 1
 SYN_REPLY = 2
 RST_STREAM = 3
 SETTINGS = 4
-NOOP = 5
+NOOP = 5  # Not implemented, only SPDY v2
 PING = 6
 GOAWAY = 7
 HEADERS = 8
 WINDOW_UPDATE = 9
+
+# SYN_STREAM and RST_STREAM Flags
+FLAG_FIN = 0x01
+FLAG_UNID = 0x02
 
 # RST_STREAM Status Codes
 PROTOCOL_ERROR = 1
@@ -23,8 +26,12 @@ UNSUPPORTED_VERSION = 4
 CANCEL = 5
 INTERNAL_ERROR = 6
 FLOW_CONTROL_ERROR = 7
+STREAM_IN_USE = 8
+STREAM_ALREADY_CLOSED = 9
+INVALID_CREDENTIALS = 10
+FRAME_TOO_LARGE = 11
 
-# SETTINGS FLags
+# SETTINGS Flags
 CLEAR_SETTINGS = 0x01
 
 # SETTINGS ID Values
@@ -35,11 +42,17 @@ MAX_CONCURRENT_STREAMS = 4
 CURRENT_CWND = 5
 DOWNLOAD_RETRANS_RATE = 6
 INITIAL_WINDOW_SIZE = 7
+CLIENT_CERTIFICATE_VECTOR_SIZE = 8
 
 # SETTINGS ID Flags
 PERSIST_NONE = 0
 PERSIST_VALUE = 1
 PERSISTED = 2
+
+# GOAWAY Status Codes
+GOAWAY_OK = 0
+GOAWAY_PROTOCOL_ERROR = 1
+GOAWAY_INTERNAL_ERROR = 11
 
 # Dicts for Debug printing
 ERROR_CODES = {
@@ -49,7 +62,7 @@ ERROR_CODES = {
     4: 'UNSUPPORTED_VERSION',
     5: 'CANCEL',
     6: 'INTERNAL_ERROR',
-    7: 'FLOW_CONTROL_ERROR'
+    7: 'FLOW_CONTROL_ERROR',
 }
 
 SETTINGS_ID_VALUES = {
@@ -59,7 +72,8 @@ SETTINGS_ID_VALUES = {
     4: 'MAX_CONCURRENT_STREAMS',
     5: 'CURRENT_CWND',
     6: 'DOWNLOAD_RETRANS_RATE',
-    7: 'INITIAL_WINDOW_SIZE'
+    7: 'INITIAL_WINDOW_SIZE',
+    8: 'CLIENT_CERTIFICATE_VECTOR_SIZE',
 }
 
 SETTINGS_ID_FLAGS = {
@@ -67,9 +81,6 @@ SETTINGS_ID_FLAGS = {
     1: 'FLAG_PERSIST_VALUE',
     2: 'FLAG_PERSISTED',
 }
-
-FLAG_FIN = 0x01
-FLAG_UNID = 0x02
 
 class InvalidFrameError(Exception):
     pass
@@ -134,7 +145,33 @@ class ControlFrame(Frame):
 class SynStream(ControlFrame):
     """
     +----------------------------------+
-    |1|      version   |      1        |
+    |1|   version = 2  |      1        |
+    +----------------------------------+
+    | Flags (8) |     Length (24 bits) |
+    +----------------------------------+
+    |X|     Stream-ID (31bits)         |
+    +----------------------------------+
+    |X|Associated-To-Stream-ID (31bits)|
+    +----------------------------------+
+    | Pri|   Unused    |               |
+    +-------------------               |
+    |      Name/value header block     |
+    |               ...                |
+   +------------------------------------+
+   | Number of Name/Value pairs (int16) |
+   +------------------------------------+
+   |     Length of name (int16)         |
+   +------------------------------------+
+   |           Name (string)            |
+   +------------------------------------+
+   |     Length of value  (int16)       |
+   +------------------------------------+
+   |          Value   (string)          |
+   +------------------------------------+
+   |           (repeats)                |
+
+    +----------------------------------+
+    |1|   version = 3  |      1        |
     +----------------------------------+
     | Flags (8) |     Length (24 bits) |
     +----------------------------------+
@@ -146,7 +183,18 @@ class SynStream(ControlFrame):
     +-------------------               |
     |      Name/value header block     |
     |               ...                |
-    +----------------------------------+
+   +------------------------------------+
+   | Number of Name/Value pairs (int32) |
+   +------------------------------------+
+   |     Length of name (int32)         |
+   +------------------------------------+
+   |           Name (string)            |
+   +------------------------------------+
+   |     Length of value  (int32)       |
+   +------------------------------------+
+   |          Value   (string)          |
+   +------------------------------------+
+   |           (repeats)                |
     """
 
     @staticmethod
@@ -174,7 +222,6 @@ class SynStream(ControlFrame):
         self.headers = headers
         self.priority = priority
         self.slot = slot
-
         self.fin = (flags & FLAG_FIN == FLAG_FIN)
         self.unidirectional = (flags & FLAG_UNID == FLAG_UNID)
 
@@ -184,7 +231,7 @@ class SynStream(ControlFrame):
 class SynReply(ControlFrame):
     """
     +----------------------------------+
-    |1|      version   |      2        |
+    |1|   version = 2  |      2        |
     +----------------------------------+
     | Flags (8) |     Length (24 bits) |
     +----------------------------------+
@@ -195,13 +242,32 @@ class SynReply(ControlFrame):
     |      Name/value header block     |
     |               ...                |
     +----------------------------------+
+    
+    +----------------------------------+
+    |1|   version = 3  |      2        |
+    +----------------------------------+
+    | Flags (8) |     Length (24 bits) |
+    +----------------------------------+
+    |X|     Stream-ID (31bits)         |
+    +----------------------------------+
+    |      Name/value header block     |
+    |               ...                |
+    +----------------------------------+
     """
 
-    _definition = [
-        (False, 1), ('stream_id', 31),
-        (False, 16),
-        ('headers', -1)
-    ]
+    @staticmethod
+    def definition(version=DEFAULT_VERSION):
+        if version == 2:
+            return [
+                    (False, 1), ('stream_id', 31),
+                    (False, 16),
+                    ('headers', -1)
+            ]
+        else:
+            return [
+                    (False, 1), ('stream_id', 31),
+                    ('headers', -1)
+            ]
 
     def __init__(self, stream_id, headers, flags=0, version=DEFAULT_VERSION):
         super(SynReply, self).__init__(SYN_REPLY, flags, version)
@@ -212,42 +278,12 @@ class SynReply(ControlFrame):
     def __repr__(self):
         return 'SYN_REPLY id={0}'.format(self.stream_id)
 
-class Headers(ControlFrame):
-    """
-    +----------------------------------+
-    |1|      version   |      8        |
-    +----------------------------------+
-    | Flags (8) |     Length (24 bits) |
-    +----------------------------------+
-    |X|     Stream-ID (31bits)         |
-    +----------------------------------+
-    |      Unused     |                |
-    +------------------                |
-    |      Name/value header block     |
-    |               ...                |
-    +----------------------------------+
-    """
-
-    _definition = [
-        (False, 1), ('stream_id', 31),
-        (False, 16),
-        ('headers', -1)
-    ]
-
-    def __init__(self, stream_id, headers, flags=0, version=DEFAULT_VERSION):
-        super(Headers, self).__init__(HEADERS, 0, version)
-        self.stream_id = stream_id
-        self.headers = headers
-
-    def __repr__(self):
-        return 'HEADERS id={0}'.format(self.stream_id)
-
 class RstStream(ControlFrame):
     """
     +----------------------------------+
-    |1|      version   |      3        |
+    |1|   version = 2  |      3        |
     +----------------------------------+
-    | Flags (8) |     Length (24 bits) |
+    | Flags (8) | Length (24 bits) = 8 |
     +----------------------------------+
     |X|     Stream-ID (31bits)         |
     +----------------------------------+
@@ -277,9 +313,23 @@ class Settings(ControlFrame):
     +----------------------------------+
     |        Number of entries         |
     +----------------------------------+
-    |         ID/Value Pairs           |
-    |              ...                 |
+    |    ...  ID/Value Pairs  ...      |
     +----------------------------------+
+    
+    SPDY v2 ID/Value Pairs:
+    +----------------------------------+
+    |     ID (24 bits)  | ID_Flags (8) |
+    +----------------------------------+
+    |         Value (32 bits)          |
+    +----------------------------------+
+    
+    SPDY v3 ID/Value Pairs:    
+    +----------------------------------+
+    | Flags(8) |      ID (24 bits)     |
+    +----------------------------------+
+    |          Value (32 bits)         |
+    +----------------------------------+
+    
     """
 
     _definition = [
@@ -289,12 +339,12 @@ class Settings(ControlFrame):
 
     def __init__(self, number_of_entries, id_value_pairs, flags=0, version=DEFAULT_VERSION):
         super(Settings, self).__init__(SETTINGS, flags, version)
-
         self.clear_persisted = (flags & CLEAR_SETTINGS == CLEAR_SETTINGS)
         self.number_of_entries = number_of_entries
         self.id_value_pairs = id_value_pairs
 
     def __repr__(self):
+        # TODO: Adapt and change for v2/v3 interop
         out = ''
         for id, (id_flag, value) in self.id_value_pairs.items():
             out += '%s=%i,%s' % (SETTINGS_ID_VALUES[id], value,
@@ -306,7 +356,7 @@ class Ping(ControlFrame):
     +----------------------------------+
     |1|      version   |      6        |
     +----------------------------------+
-    | Flags (8) |     Length (24 bits) |
+    | Flags(8) = 0 | Length (24 b) = 4 |
     +----------------------------------+
     |                ID                |
     +----------------------------------+
@@ -326,29 +376,96 @@ class Ping(ControlFrame):
 class Goaway(ControlFrame):
     """
     +----------------------------------+
-    |1|      version   |      7        |
+    |1|  version = 2   |      7        |
     +----------------------------------+
     | Flags (8) |     Length (24 bits) |
     +----------------------------------+
     |X|  Last-good-stream-ID (31 bits) |
     +----------------------------------+
+    +----------------------------------+
+    |1|  version = 3   |      7        |
+    +----------------------------------+
+    | Flags(8) = 0 | Length (24 b) = 8 |
+    +----------------------------------+
+    |X|  Last-good-stream-ID (31 bits) |
+    +----------------------------------+
+    |           Status Code            |
+    +----------------------------------+
     """
 
-    _definition = [
-        ('last_stream_id', 32)
-    ]
+    @staticmethod
+    def definition(version=DEFAULT_VERSION):
+        if version == 2:
+            return [
+                    (False, 1), ('last_stream_id', 31),
+            ]
+        else:
+            return [
+                    (False, 1), ('last_stream_id', 31),
+                    ('status_code', 32),
+            ]
 
-    def __init__(self, last_stream_id, flags=0, version=DEFAULT_VERSION):
+    def __init__(self, last_stream_id, status_code=None, flags=0, version=DEFAULT_VERSION):
         super(Goaway, self).__init__(GOAWAY, 0, version)
         self.last_stream_id = last_stream_id
+        self.status_code = status_code
 
     def __repr__(self):
         return 'GOAWAY'
 
+class Headers(ControlFrame):
+    """
+    +----------------------------------+
+    |1|   version = 2  |      8        |
+    +----------------------------------+
+    | Flags (8) |     Length (24 bits) |
+    +----------------------------------+
+    |X|     Stream-ID (31bits)         |
+    +----------------------------------+
+    |      Unused     |                |
+    +------------------                |
+    |      Name/value header block     |
+    |               ...                |
+    +----------------------------------+
+    +----------------------------------+
+    |1|   version = 3  |      8        |
+    +----------------------------------+
+    | Flags (8) |     Length (24 bits) |
+    +----------------------------------+
+    |X|     Stream-ID (31bits)         |
+    +----------------------------------+
+    |      Name/value header block     |
+    |               ...                |
+    +----------------------------------+
+    """
+
+    @staticmethod
+    def definition(version=DEFAULT_VERSION):
+        if version == 2:
+            return [
+                    (False, 1), ('stream_id', 31),
+                    (False, 16),
+                    ('headers', -1)
+            ]
+        else:
+            return [
+                    (False, 1), ('stream_id', 31),
+                    ('headers', -1)
+            ]
+
+
+    def __init__(self, stream_id, headers, flags=0, version=DEFAULT_VERSION):
+        super(Headers, self).__init__(HEADERS, 0, version)
+        self.stream_id = stream_id
+        self.headers = headers
+
+    def __repr__(self):
+        return 'HEADERS id={0}'.format(self.stream_id)
+
 class WindowUpdate(ControlFrame):
     """
     +----------------------------------+
-    |1|   version    |         9       |
+    |1|   version = 3 |        9       |
     +----------------------------------+
     | 0 (flags) |     8 (length)       |
     +----------------------------------+
@@ -376,7 +493,7 @@ FRAME_TYPES = {
     SYN_REPLY: SynReply,
     RST_STREAM: RstStream,
     SETTINGS: Settings,
-#    5: Noop,
+#    NOOP: Noop,
     PING: Ping,
     GOAWAY: Goaway,
     HEADERS: Headers,
