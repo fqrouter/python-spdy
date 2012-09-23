@@ -1,7 +1,7 @@
 python-spdy
 ==========
 
-python-spdy is a simple SPDY v2 parser/(de)muxer for Python 2.6 or newer. Python 3 is supported. SPDY v3 support is on the way.
+python-spdy is a simple SPDY v2/v3 parser/(de)muxer for Python 2.6 or newer. Python 3 is supported.
 
 Usage
 -----
