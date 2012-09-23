@@ -16,7 +16,7 @@ from spdy.frames import SynStream, Ping, Goaway, FLAG_FIN
 
 DEFAULT_HOST = 'www.google.com'
 DEFAULT_PORT = 443
-SPDY_VERSION = 2
+SPDY_VERSION = 3
 
 def str2hexa(string, columns=4):
     """ Helper function to print hexadecimal bytestrings.
@@ -98,17 +98,11 @@ if __name__ == '__main__':
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host, port))
     connection = TLSConnection(sock)
-
-    if SPDY_VERSION == 2:
-        connection.handshakeClientCert(nextProtos=["spdy/2"])
-    else:
-        connection.handshakeClientCert(nextProtos=["spdy/3"])
+    connection.handshakeClientCert(nextProtos=["spdy/%i" % SPDY_VERSION])
 
     spdy_ctx = Context(CLIENT, version=SPDY_VERSION)
-
     ping_test(spdy_ctx)
     get_page(spdy_ctx, host)
-
     out = spdy_ctx.outgoing()
     #print str2hexa(str(out))
     connection.write(out)

@@ -282,7 +282,7 @@ class SynReply(ControlFrame):
         self.fin = (flags & FLAG_FIN == FLAG_FIN)
 
     def __repr__(self):
-        return 'SYN_REPLY id={0}'.format(self.stream_id)
+        return 'SYN_REPLY v{0} id={1}'.format(self.version, self.stream_id)
 
 class RstStream(ControlFrame):
     """
