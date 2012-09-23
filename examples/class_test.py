@@ -24,10 +24,18 @@ def print_encoded_frame(frame):
 
 if __name__ == '__main__':
     ctx = Context(CLIENT)
-    frame = SynStream(1, {})
+    frame = SynStream(1, headers={'method' : 'GET',
+                               'url'   : '/',
+                               'version': 'HTTP/1.1',
+                               'host'   : 'www.google.com',
+                               'scheme' : 'https',
+                               })
     print ('SYN Frame')
-    print_encoded_frame(ctx._encode_frame(frame))
-
+    byte_frame = ctx._encode_frame(frame)
+    print_encoded_frame(byte_frame)
+    frame2 = ctx._parse_frame(byte_frame)[0]
+    print('decoded: %s, %r' % (frame2, frame.headers))
+    
     print ('SETTINGS Frame')
     frame = Settings(2, {UPLOAD_BANDWIDTH: (PERSIST_NONE, 60),
                          DOWNLOAD_BANDWIDTH : (PERSIST_NONE, 128)})
@@ -35,4 +43,4 @@ if __name__ == '__main__':
     print_encoded_frame(byte_frame)
 
     frame2 = ctx._parse_frame(byte_frame)[0]
-    print(frame2)
+    print('decoded: ' + str(frame2))

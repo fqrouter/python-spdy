@@ -16,6 +16,7 @@ from spdy.frames import SynStream, Ping, Goaway, FLAG_FIN
 
 DEFAULT_HOST = 'www.google.com'
 DEFAULT_PORT = 443
+SPDY_VERSION = 2
 
 def str2hexa(string, columns=4):
     """ Helper function to print hexadecimal bytestrings.
@@ -54,19 +55,32 @@ def parse_args():
 
 def ping_test(spdy_ctx):
     """ Just Pings the server through a SPDY Ping Frame """
-    ping_frame = Ping(spdy_ctx.next_ping_id)
+    ping_frame = Ping(spdy_ctx.next_ping_id, version=SPDY_VERSION)
     print('>>', ping_frame)
     spdy_ctx.put_frame(ping_frame)
 
-def get_page(spdy_ctx, host, url='/'):
-    syn_frame = SynStream(stream_id=spdy_ctx.next_stream_id, \
-                      flags=FLAG_FIN, \
-                      headers={'method' : 'GET',
-                               'url'   : url,
-                               'version': 'HTTP/1.1',
-                               'host'   : host,
-                               'scheme' : 'https',
-                               })
+def get_headers(version, host, path):
+    # TODO: Review gzip content-type
+    if version == 2:
+        return {'method' : 'GET',
+                'url'    : path,
+                'version': 'HTTP/1.1',
+                'host'   : host,
+                'scheme' : 'https',
+                }
+    else:
+        return {':method' : 'GET',
+                ':path'   : path,
+                ':version': 'HTTP/1.1',
+                ':host'   : host,
+                ':scheme' : 'https',
+                } 
+
+def get_page(spdy_ctx, host, path='/'):
+    syn_frame = SynStream(stream_id=spdy_ctx.next_stream_id,
+                      flags=FLAG_FIN, 
+                      headers=get_headers(SPDY_VERSION, host, path), 
+                      version=SPDY_VERSION)
     print('>>', syn_frame, 'Headers:', syn_frame.headers)
     spdy_ctx.put_frame(syn_frame)
 
@@ -84,9 +98,13 @@ if __name__ == '__main__':
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host, port))
     connection = TLSConnection(sock)
-    connection.handshakeClientCert(nextProtos=["spdy/2"])
 
-    spdy_ctx = Context(CLIENT)
+    if SPDY_VERSION == 2:
+        connection.handshakeClientCert(nextProtos=["spdy/2"])
+    else:
+        connection.handshakeClientCert(nextProtos=["spdy/3"])
+
+    spdy_ctx = Context(CLIENT, version=SPDY_VERSION)
 
     ping_test(spdy_ctx)
     get_page(spdy_ctx, host)

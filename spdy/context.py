@@ -1,8 +1,8 @@
 # coding: utf-8
 from sys import version_info
 from bitarray import bitarray
-from spdy.c_zlib import compress, decompress, HEADER_ZLIB_DICT_2
-from spdy.frames import Frame, DataFrame, VERSIONS, FRAME_TYPES
+from spdy.c_zlib import compress, decompress, ZLIB_DICT_V2, ZLIB_DICT_V3
+from spdy.frames import Frame, DataFrame, DEFAULT_VERSION, VERSIONS, FRAME_TYPES
 
 SERVER = 'SERVER'
 CLIENT = 'CLIENT'
@@ -63,7 +63,7 @@ else:
 
 
 class Context(object):
-    def __init__(self, side, version=2):
+    def __init__(self, side, version=DEFAULT_VERSION):
         if side not in (SERVER, CLIENT):
             raise TypeError("side must be SERVER or CLIENT")
 
@@ -114,7 +114,9 @@ class Context(object):
         return out
 
     def _parse_header_chunk(self, compressed_data, version):
-        chunk = decompress(compressed_data, dictionary=HEADER_ZLIB_DICT_2)
+        # Zlib dictionary selection
+        dictionary = ZLIB_DICT_V2 if version == 2 else ZLIB_DICT_V3
+        chunk = decompress(compressed_data, dictionary)
         
         length_size = 2 if version == 2 else 4
         headers = {}
@@ -149,9 +151,8 @@ class Context(object):
 
         return headers
 
-    def _parse_settings_id_values(self, number_of_entries, data):
+    def _parse_settings_id_values_v2(self, number_of_entries, data):
         id_value_pairs = {}
-
         cursor = 0
         for _ in range(number_of_entries):
             # 3B = ID
@@ -164,7 +165,22 @@ class Context(object):
             value = get_int_from_stream(data[cursor:cursor+4], 'big')
             cursor += 4
             id_value_pairs[id] = (id_flag, value)
+        return id_value_pairs
 
+    def _parse_settings_id_values_v3(self, number_of_entries, data):
+        id_value_pairs = {}
+        cursor = 0
+        for _ in range(number_of_entries):
+            # 1B = ID_Flag
+            id_flag = get_int_from_stream(data[cursor:cursor+1], 'big')
+            cursor += 1
+            # 3B = ID
+            id = get_int_from_stream(data[cursor:cursor+3], 'big')
+            cursor += 3
+            # 4B = Value
+            value = get_int_from_stream(data[cursor:cursor+4], 'big')
+            cursor += 4
+            id_value_pairs[id] = (id_flag, value)
         return id_value_pairs
 
     def _parse_frame(self, chunk):
@@ -220,7 +236,11 @@ class Context(object):
                 if key == 'headers': #headers are compressed
                     args[key] = self._parse_header_chunk(value.tobytes(), self.version)
                 elif key == 'id_value_pairs':
-                    args[key] = self._parse_settings_id_values(args['number_of_entries'], \
+                    if self.version == 2:
+                        args[key] = self._parse_settings_id_values_v2(args['number_of_entries'], \
+                                                            value.tobytes())
+                    else:
+                        args[key] = self._parse_settings_id_values_v3(args['number_of_entries'], \
                                                             value.tobytes())
                 else:
                     #we have to pad values on the left, because bitarray will assume
@@ -255,11 +275,12 @@ class Context(object):
 
         return (frame, frame_length)
 
-    def _encode_header_chunk(self, headers):
+    def _encode_header_chunk(self, headers, version):
         chunk = bytearray()
-
+        length_size = 2 if version == 2 else 4
+        
         #first two bytes: number of pairs
-        chunk.extend(get_stream_from_int(len(headers), 2, 'big'))
+        chunk.extend(get_stream_from_int(len(headers), length_size, 'big'))
 
         #after that...
         for name, value in headers.items():
@@ -267,23 +288,23 @@ class Context(object):
             value = bytes(value.encode('utf-8'))
 
             #two bytes: length of name
-            chunk.extend(get_stream_from_int(len(name), 2, 'big'))
+            chunk.extend(get_stream_from_int(len(name), length_size, 'big'))
 
             #next name_length bytes: name
             chunk.extend(name)
 
             #two bytes: length of value
-            chunk.extend(get_stream_from_int(len(value), 2, 'big'))
+            chunk.extend(get_stream_from_int(len(value), length_size, 'big'))
 
             #next value_length bytes: value
             chunk.extend(value)
-
-        compressed_headers = compress(bytes(chunk), level=6, dictionary=HEADER_ZLIB_DICT_2)
+            
+        dictionary = ZLIB_DICT_V2 if version == 2 else ZLIB_DICT_V3
+        compressed_headers = compress(bytes(chunk), level=6, dictionary=dictionary)
         return compressed_headers[:-1] # Don't know why -1
 
-    def _encode_settings_id_values(self, id_values_dict):
+    def _encode_settings_id_values_v2(self, id_values_dict):
         chunk = bytearray()
-
         for id, (id_flag, value) in id_values_dict.items():
             # 3B = ID
             chunk.extend(get_stream_from_int(id, 3, 'little'))
@@ -291,7 +312,17 @@ class Context(object):
             chunk.extend(get_stream_from_int(id_flag, 1, 'big'))
             # 4B = Value
             chunk.extend(get_stream_from_int(value, 4, 'big'))
+        return bytes(chunk)
 
+    def _encode_settings_id_values_v3(self, id_values_dict):
+        chunk = bytearray()
+        for id, (id_flag, value) in id_values_dict.items():
+            # 1B = ID_Flag
+            chunk.extend(get_stream_from_int(id_flag, 1, 'big'))
+            # 3B = ID
+            chunk.extend(get_stream_from_int(id, 3, 'big'))
+            # 4B = Value
+            chunk.extend(get_stream_from_int(value, 4, 'big'))
         return bytes(chunk)
 
     def _encode_frame(self, frame):
@@ -322,10 +353,14 @@ class Context(object):
                 value = getattr(frame, key)
                 if key == 'headers':
                     chunk = bitarray()
-                    chunk.frombytes(self._encode_header_chunk(value))
+                    chunk.frombytes(self._encode_header_chunk(value, frame.version))
                 elif key == 'id_value_pairs':
                     chunk = bitarray()
-                    chunk.frombytes(self._encode_settings_id_values(value))
+                    if frame.version == 2:
+                        chunk_content = self._encode_settings_id_values_v2(value)
+                    else:
+                        chunk_content = self._encode_settings_id_values_v3(value)
+                    chunk.frombytes(chunk_content)
                 else:
                     chunk = bitarray(bin(value)[2:])
                     zeroes = bitarray(num_bits - len(chunk))

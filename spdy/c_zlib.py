@@ -36,7 +36,7 @@ from ctypes import util
 _zlib = C.cdll.LoadLibrary(util.find_library('z'))
 assert _zlib._name, "Can't find libz"
 
-HEADER_ZLIB_DICT_2 = \
+ZLIB_DICT_V2 = \
     b"optionsgetheadpostputdeletetraceacceptaccept-charsetaccept-encodingaccept-" \
     b"languageauthorizationexpectfromhostif-modified-sinceif-matchif-none-matchi" \
     b"f-rangeif-unmodifiedsincemax-forwardsproxy-authorizationrangerefererteuser" \
@@ -51,7 +51,7 @@ HEADER_ZLIB_DICT_2 = \
     b"ation/xhtmltext/plainpublicmax-agecharset=iso-8859-1utf-8gzipdeflateHTTP/1" \
     b".1statusversionurl\x00"
 
-HEADER_ZLIB_DICT_3 = \
+ZLIB_DICT_V3 = \
     b"\x00\x00\x00\x07\x6f\x70\x74\x69\x6f\x6e\x73\x00\x00\x00\x04\x68" \
     b"\x65\x61\x64\x00\x00\x00\x04\x70\x6f\x73\x74\x00\x00\x00\x03\x70" \
     b"\x75\x74\x00\x00\x00\x06\x64\x65\x6c\x65\x74\x65\x00\x00\x00\x05" \
