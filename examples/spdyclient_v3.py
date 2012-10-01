@@ -94,10 +94,10 @@ if __name__ == '__main__':
     ctx.set_ciphers('DES-CBC3-SHA')
     ctx.load_cert_chain('server.crt', 'server.key')
     ctx.set_npn_protocols(['spdy/%i' % SPDY_VERSION])
-
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((host, port))
     connection = ctx.wrap_socket(sock)
+    print ('TLS NPN Selected: %r' % connection.selected_npn_protocol())
     spdy_ctx = Context(CLIENT, version=SPDY_VERSION)
 
     ping_test(spdy_ctx)

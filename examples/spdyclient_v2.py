@@ -99,7 +99,7 @@ if __name__ == '__main__':
     sock.connect((host, port))
     connection = TLSConnection(sock)
     connection.handshakeClientCert(nextProtos=["spdy/%i" % SPDY_VERSION])
-
+    print ('TLS NPN Selected: %r' % connection.next_proto)
     spdy_ctx = Context(CLIENT, version=SPDY_VERSION)
     ping_test(spdy_ctx)
     get_page(spdy_ctx, host)
