@@ -48,15 +48,9 @@ Note: To use this library for I/O networking, the SPDY protocol usually needs
       environments running OpenSSL 1.0.1+. 
       
       If you are not running Python 3.3+ over OpenSSL 1.0.1+, you can use 
-      the tlslite module [1], from Python 2.6/2.7 instead. 
-      However, the latest 0.4.1 version doesn't have a patch which includes
-      support for Client NPN; you can find a patched tlslite 0.4.1 supporting
-      Client NPN here [2]. 
-      I've posted a pull request to the author, so I hope this issue will be 
-      resolved soon in future tlslite release.
+      the tlslite module [1][2], from Python 2.6/2.7 instead. 
       
       Take a look at the /examples directory for client and server SPDY examples.
 
 [1] http://pypi.python.org/pypi/tlslite
-
-[2] https://github.com/marcelofernandez/tlslite
+[2] https://github.com/trevp/tlslite
