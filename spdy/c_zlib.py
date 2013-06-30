@@ -170,101 +170,89 @@ Z_NEED_DICT = 0x02
 
 Z_NO_FLUSH = 0x00
 Z_FINISH = 0x04
+Z_SYNC_FLUSH = 2
 
-CHUNK = 1024 * 32
+CHUNK = 1024 * 64
 
-
-def compress(input, level=6, dictionary=None):
-    #out = []
-    out = bytes()
-    st = _z_stream()
-    st.avail_in  = len(input)
-    st.next_in   = C.cast(C.c_char_p(input), C.POINTER(C.c_ubyte))
-    st.avail_out = Z_NULL
-    st.next_out = C.cast(Z_NULL, C.POINTER(C.c_ubyte))
-    err = _zlib.deflateInit_(C.byref(st), level, ZLIB_VERSION, C.sizeof(st))
-    assert err == Z_OK, err
-    if dictionary:
-        err = _zlib.deflateSetDictionary(C.byref(st), C.cast(C.c_char_p(dictionary), C.POINTER(C.c_ubyte)), len(dictionary))
+class Deflater(object):
+    def __init__(self, version):
+        self._stream = _z_stream()
+        self._stream.avail_in = Z_NULL
+        self._stream.next_in = C.cast(Z_NULL, C.POINTER(C.c_ubyte))
+        self._stream.avail_out = Z_NULL
+        self._stream.next_out = C.cast(Z_NULL, C.POINTER(C.c_ubyte))
+        err = _zlib.deflateInit_(C.byref(self._stream), 6, ZLIB_VERSION, C.sizeof(self._stream))
         assert err == Z_OK, err
-    while True:
-        st.avail_out = CHUNK
-        outbuf = C.create_string_buffer(CHUNK)
-        st.next_out = C.cast(outbuf, C.POINTER(C.c_ubyte))
-        err = _zlib.deflate(C.byref(st), Z_FINISH)
-        #out.append(outbuf[:CHUNK-st.avail_out])
-        out += outbuf[:CHUNK-st.avail_out]
-        if err == Z_STREAM_END: break
-        elif err == Z_OK: pass
-        else:
-            raise (AssertionError, err) 
-    err = _zlib.deflateEnd(C.byref(st))
-    assert err == Z_OK, err
-    #return "".join(out)
-    return out
-    
-        
-def decompress(input, dictionary=None):
-    #out = []
-    out = bytes()
-    st = _z_stream()
-    st.avail_in  = len(input)
-    st.next_in   = C.cast(C.c_char_p(input), C.POINTER(C.c_ubyte))
-    st.avail_out = Z_NULL
-    st.next_out = C.cast(Z_NULL, C.POINTER(C.c_ubyte))
-    err = _zlib.inflateInit2_(C.byref(st), 15, ZLIB_VERSION, C.sizeof(st))
-    assert err == Z_OK, err
-    stream_end = False
-    while not stream_end:
-        st.avail_out = CHUNK
-        outbuf = C.create_string_buffer(CHUNK)
-        st.next_out = C.cast(outbuf, C.POINTER(C.c_ubyte))
-        err = _zlib.inflate(C.byref(st), Z_NO_FLUSH)
-        if err == Z_NEED_DICT:
-            assert dictionary, "no dictionary provided"
-            err = _zlib.inflateSetDictionary(C.byref(st), C.cast(C.c_char_p(dictionary), C.POINTER(C.c_ubyte)), len(dictionary))
-            assert err == Z_OK, err
-        elif err in [Z_OK, Z_STREAM_END]: 
-            #out.append(outbuf[:CHUNK-st.avail_out])
-            out += outbuf[:CHUNK-st.avail_out]
-        else:
-            break
-            #raise AssertionError, err 
-        if err == Z_STREAM_END: 
-            stream_end = True
-    else: # Executes if while did not breaked
-        err = _zlib.inflateEnd(C.byref(st))
+        self.dictionary = ZLIB_DICT_V3 if 3 == version else ZLIB_DICT_V2
+        err = _zlib.deflateSetDictionary(
+            C.byref(self._stream), C.cast(C.c_char_p(self.dictionary), C.POINTER(C.c_ubyte)), len(self.dictionary))
         assert err == Z_OK, err
-    #return "".join(out)
-    return out
+
+    def compress(self, input):
+        self._stream.next_in = C.cast(C.c_char_p(input), C.POINTER(C.c_ubyte))
+        self._stream.avail_in = len(input)
+
+        buf = bytearray()
+
+        while True:
+            self._stream.avail_out = CHUNK
+            outbuf = C.create_string_buffer(CHUNK)
+            self._stream.next_out = C.cast(outbuf, C.POINTER(C.c_ubyte))
+
+            status = _zlib.deflate(C.byref(self._stream), Z_SYNC_FLUSH)
+            boundary = CHUNK - self._stream.avail_out
+            buf += outbuf[:boundary]
+
+            if status == Z_STREAM_END or self._stream.avail_in == 0:
+                break
+            elif status != Z_OK:
+                raise AssertionError(status)
+        return bytes(buf)
+
+
+class Inflater(object):
+    def __init__(self, version):
+        self._stream = _z_stream()
+        self._stream.avail_in = Z_NULL
+        self._stream.next_in = C.cast(Z_NULL, C.POINTER(C.c_ubyte))
+        self._stream.avail_out = Z_NULL
+        self._stream.next_out = C.cast(Z_NULL, C.POINTER(C.c_ubyte))
+        err = _zlib.inflateInit2_(C.byref(self._stream), 15, ZLIB_VERSION, C.sizeof(self._stream))
+        assert err == Z_OK, err
+        self.dictionary = ZLIB_DICT_V3 if 3 == version else ZLIB_DICT_V2
+
+    def decompress(self, input):
+        self._stream.next_in = C.cast(C.c_char_p(input), C.POINTER(C.c_ubyte))
+        self._stream.avail_in = len(input)
+
+        buf = bytearray()
+
+        while True:
+            self._stream.avail_out = CHUNK
+            outbuf = C.create_string_buffer(CHUNK)
+            self._stream.next_out = C.cast(outbuf, C.POINTER(C.c_ubyte))
+
+            status = _zlib.inflate(C.byref(self._stream), Z_SYNC_FLUSH)
+            if status == Z_NEED_DICT:
+                err = _zlib.inflateSetDictionary(
+                    C.byref(self._stream), C.cast(C.c_char_p(self.dictionary), C.POINTER(C.c_ubyte)),
+                    len(self.dictionary))
+                assert err == Z_OK
+                continue
+
+            boundary = CHUNK - self._stream.avail_out
+            buf += outbuf[:boundary]
+
+            if status == Z_STREAM_END or self._stream.avail_in == 0:
+                break
+            else:
+                assert status == Z_OK, 'failed to decompress! status is ' + str(status)
+
+        return bytes(buf)
+
     
-    
-def _test(): 
-    import zlib, time, sys
-    input = open(sys.argv[1], 'rb').read()
-    
-    # compression tests
-    start = time.time()
-    ct_archive = compress(input, 6)
-    print("ctypes zlib compress: %2.2f seconds" % (time.time() - start))
-    start = time.time()
-    zl_archive = zlib.compress(input, 6)
-    print("zlib module compress: %2.2f seconds" % (time.time() - start))
-    assert ct_archive == zl_archive, "%s != %s" % (len(ct_archive), len(zl_archive))
-    # decompressions tests
-    start = time.time()
-    ct_orig = decompress(ct_archive)
-    print("ctypes zlib decompress: %2.2f seconds" % (time.time() - start))
-    start = time.time()
-    zl_orig = zlib.decompress(ct_archive)
-    print("zlib module decompress: %2.2f seconds" % (time.time() - start))
-    assert ct_orig == zl_orig, "%s != %s" % (len(ct_orig), len(zl_orig))
-    # dictionary compression
-    dictionary = bytes("andofthemyhisherforanother", 'utf-8')
-    di_archive = compress(input, 6, dictionary)
-    di_orig = decompress(di_archive, dictionary)
-    assert input == di_orig, "%s != %s" % (len(input), len(di_orig))
-    print("done.")
+def _test():
+    print(Inflater().decompress(Deflater().compress('abcd')))
 
     
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 # coding: utf-8
 from sys import version_info
 from bitarray import bitarray
-from spdy.c_zlib import compress, decompress, ZLIB_DICT_V2, ZLIB_DICT_V3
+from spdy.c_zlib import Inflater, Deflater, ZLIB_DICT_V2, ZLIB_DICT_V3
 from spdy.frames import Frame, DataFrame, DEFAULT_VERSION, VERSIONS, FRAME_TYPES
 
 SERVER = 'SERVER'
@@ -72,6 +72,8 @@ class Context(object):
         self.version = version
         self.frame_queue = []
         self.input_buffer = bytearray()
+        self.inflater = Inflater(version)
+        self.deflater = Deflater(version)
 
         if side == SERVER:
             self._stream_id = 2
@@ -115,8 +117,7 @@ class Context(object):
 
     def _parse_header_chunk(self, compressed_data, version):
         # Zlib dictionary selection
-        dictionary = ZLIB_DICT_V2 if version == 2 else ZLIB_DICT_V3
-        chunk = decompress(compressed_data, dictionary)
+        chunk = self.inflater.decompress(compressed_data)
         
         length_size = 2 if version == 2 else 4
         headers = {}
@@ -299,9 +300,7 @@ class Context(object):
             #next value_length bytes: value
             chunk.extend(value)
             
-        dictionary = ZLIB_DICT_V2 if version == 2 else ZLIB_DICT_V3
-        compressed_headers = compress(bytes(chunk), level=6, dictionary=dictionary)
-        return compressed_headers[:-1] # Don't know why -1
+        return self.deflater.compress(bytes(chunk))
 
     def _encode_settings_id_values_v2(self, id_values_dict):
         chunk = bytearray()
