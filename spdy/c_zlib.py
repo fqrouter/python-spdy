@@ -32,8 +32,12 @@ SOFTWARE.
 
 import ctypes as C
 from ctypes import util
+import os
 
-_zlib = C.cdll.LoadLibrary(util.find_library('z'))
+if os.path.exists('/system/lib/libz.so'):
+    _zlib = C.cdll.LoadLibrary('/system/lib/libz.so')
+else:
+    _zlib = C.cdll.LoadLibrary(util.find_library('z'))
 assert _zlib._name, "Can't find libz"
 
 ZLIB_DICT_V2 = \
