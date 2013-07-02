@@ -145,7 +145,7 @@ class Context(object):
             cursor += value_length
 
             if name_length == 0 or value_length == 0:
-                raise SpdyProtocolError("zero-length name or value in n/v block")
+                continue
             if name in headers:
                 raise SpdyProtocolError("duplicate name in n/v block")
             headers[name] = value
